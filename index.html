@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🌟 Professional Talking Tambola! 🌟</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    <style>
+        :root {
+            --primary-color: #ff6f61;
+            --secondary-color: #6a0572;
+            --accent-color: #fca311;
+            --bg-gradient: linear-gradient(135deg, #fce043 0%, #fb7ba2 100%);
+            --glass-bg: rgba(255, 255, 255, 0.2);
+        }
+
+        body {
+            background: var(--bg-gradient);
+            font-family: 'Poppins', sans-serif;
+            color: #333;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .glass-card {
+            background: var(--glass-bg);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 20px;
+            padding: 20px;
+            box-shadow: 0 15px 35px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+
+        .main-layout { display: grid; grid-template-columns: 320px 1fr 350px; gap: 25px; }
+
+        #board {
+            display: grid; grid-template-columns: repeat(10, 1fr); gap: 6px;
+            background: white; padding: 15px; border-radius: 15px;
+        }
+
+        .cell {
+            aspect-ratio: 1; display: flex; align-items: center; justify-content: center;
+            background: #f0f4f8; border-radius: 50%; font-weight: 600; font-size: 1.1rem;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1); transition: 0.2s;
+        }
+
+        .called {
+            background: var(--primary-color) !important; color: white;
+            transform: scale(1.1); animation: bounceIn 0.4s ease-out forwards;
+        }
+
+        @keyframes bounceIn {
+            0% { transform: scale(0.3); opacity: 0; }
+            50% { transform: scale(1.2); }
+            100% { transform: scale(1.1); }
+        }
+
+        #current-num {
+            font-size: 7rem; font-weight: 900; color: var(--accent-color);
+            text-shadow: 0 0 20px rgba(252, 163, 17, 0.5); line-height: 1;
+        }
+
+        .ticket-container {
+            background: white; padding: 12px; border-radius: 12px; margin-bottom: 15px;
+            border-top: 5px solid var(--secondary-color); box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+
+        .ticket-grid { display: grid; grid-template-columns: repeat(9, 1fr); gap: 2px; background: #ddd; border: 1px solid #999; }
+        .t-cell { background: white; height: 35px; display: flex; align-items: center; justify-content: center; font-size: 0.85rem; font-weight: bold; }
+        .t-hit { background: var(--accent-color) !important; color: white; transition: 0.3s; }
+
+        .winner-msg {
+            position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            z-index: 9999; background: white; padding: 40px; border-radius: 25px;
+            text-align: center; display: none; border: 5px solid var(--primary-color);
+        }
+
+        .progress-bar { height: 8px; background: var(--primary-color); width: 0%; transition: 0.3s; border-radius: 4px; }
+
+        @media (max-width: 1200px) { .main-layout { grid-template-columns: 1fr; } }
+    </style>
+</head>
+<body>
+
+<div class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h3 class="fw-bold m-0">🌟 Tambola Fun Fiesta!</h3>
+        <button class="btn btn-sm btn-outline-danger" onclick="location.reload()">Reset</button>
+    </div>
+
+    <div class="main-layout">
+        <div class="left-panel">
+            <div class="glass-card">
+                <h6>👤 Add Players</h6>
+                <div class="input-group input-group-sm mb-2">
+                    <input type="text" id="playerName" class="form-control" placeholder="Name">
+                    <button class="btn btn-primary" onclick="addPlayer()">Add</button>
+                </div>
+                <div id="playerBadgeList" class="d-flex flex-wrap gap-1"></div>
+            </div>
+
+            <div class="glass-card text-center">
+                <div id="current-num">--</div>
+                <button class="btn btn-success btn-lg w-100 fw-bold mt-2" onclick="drawNumber()">NEXT NUMBER!</button>
+                <div class="bg-light mt-3 rounded overflow-hidden"><div class="progress-bar" id="pBar"></div></div>
+                <small class="text-muted">Called: <span id="count">0</span>/90</small>
+            </div>
+
+            <div class="glass-card">
+                <h6>🏆 Winners</h6>
+                <div id="claimed-list" class="small"></div>
+            </div>
+        </div>
+
+        <div id="board-container"><div id="board"></div></div>
+
+        <div id="players-section">
+            <h5 class="text-white">🎫 Tickets</h5>
+            <div id="tickets-list"></div>
+        </div>
+    </div>
+</div>
+
+<div id="winnerModal" class="winner-msg">
+    <h1>🏆</h1>
+    <h2 id="winPrize" class="text-uppercase small"></h2>
+    <h1 id="winName" class="text-primary fw-bold"></h1>
+    <button class="btn btn-dark btn-sm mt-3" onclick="document.getElementById('winnerModal').style.display='none'">Awesome!</button>
+</div>
+
+<script>
+let drawnNumbers = [];
+let players = [];
+let prizesWon = { early5: [], row1: [], row2: [], row3: [], fullHouse: [] };
+
+function speak(text) {
+    window.speechSynthesis.cancel();
+    const msg = new SpeechSynthesisUtterance(text);
+    msg.rate = 1;
+    window.speechSynthesis.speak(msg);
+}
+
+// --- PROFESSIONAL TICKET LOGIC ---
+function generateTicket() {
+    let ticket = Array(3).fill().map(() => Array(9).fill(0));
+    
+    // 1. Column ranges fix karein
+    for (let c = 0; c < 9; c++) {
+        let min = (c === 0) ? 1 : c * 10;
+        let max = (c === 8) ? 90 : c * 10 + 9;
+        
+        // Har column mein kam se kam ek number
+        let r = Math.floor(Math.random() * 3);
+        ticket[r][c] = Math.floor(Math.random() * (max - min + 1)) + min;
+    }
+
+    // 2. Total 15 numbers pura karne ke liye 6 aur daalein
+    let extra = 6;
+    while (extra > 0) {
+        let r = Math.floor(Math.random() * 3);
+        let c = Math.floor(Math.random() * 9);
+        let min = (c === 0) ? 1 : c * 10;
+        let max = (c === 8) ? 90 : c * 10 + 9;
+
+        if (ticket[r][c] === 0) {
+            let rowCount = ticket[r].filter(n => n !== 0).length;
+            let colCount = [ticket[0][c], ticket[1][c], ticket[2][c]].filter(n => n !== 0).length;
+
+            if (rowCount < 5 && colCount < 2) {
+                let num = Math.floor(Math.random() * (max - min + 1)) + min;
+                // Duplicate check in ticket
+                if (!ticket.flat().includes(num)) {
+                    ticket[r][c] = num;
+                    extra--;
+                }
+            }
+        }
+    }
+    return ticket;
+}
+
+function addPlayer() {
+    const name = document.getElementById('playerName').value.trim();
+    if(!name) return;
+    players.push({ name: name, ticket: generateTicket() });
+    document.getElementById('playerName').value = '';
+    document.getElementById('playerBadgeList').innerHTML += `<span class="badge bg-dark">${name}</span>`;
+    renderTickets();
+    speak("Welcome " + name);
+}
+
+function initBoard() {
+    const b = document.getElementById('board');
+    for(let i=1; i<=90; i++) b.innerHTML += `<div class="cell" id="b-${i}">${i}</div>`;
+}
+
+function renderTickets() {
+    const list = document.getElementById('tickets-list');
+    list.innerHTML = players.map(p => `
+        <div class="ticket-container">
+            <strong>${p.name}</strong>
+            <div class="ticket-grid">
+                ${p.ticket.flat().map(num => `
+                    <div class="t-cell ${drawnNumbers.includes(num) && num !== 0 ? 't-hit' : ''}">
+                        ${num || ''}
+                    </div>
+                `).join('')}
+            </div>
+        </div>
+    `).join('');
+}
+
+function drawNumber() {
+    if(players.length === 0) return alert("Add players!");
+    if(drawnNumbers.length >= 90) return;
+    
+    let num;
+    do { num = Math.floor(Math.random() * 90) + 1; } while(drawnNumbers.includes(num));
+    
+    drawnNumbers.push(num);
+    document.getElementById('current-num').textContent = num;
+    document.getElementById(`b-${num}`).classList.add('called');
+    document.getElementById('count').textContent = drawnNumbers.length;
+    document.getElementById('pBar').style.width = (drawnNumbers.length / 90) * 100 + '%';
+
+    speak("Number " + num);
+    checkWinners();
+    renderTickets();
+}
+
+function checkWinners() {
+    players.forEach(p => {
+        let hits = 0, rHits = [0,0,0];
+        p.ticket.forEach((row, rIdx) => {
+            row.forEach(n => { if(n !== 0 && drawnNumbers.includes(n)) { hits++; rHits[rIdx]++; } });
+        });
+
+        if(hits === 5 && !prizesWon.early5.includes(p.name)) announce(p.name, "EARLY 5", 'early5');
+        if(rHits[0] === 5 && !prizesWon.row1.includes(p.name)) announce(p.name, "TOP ROW", 'row1');
+        if(rHits[1] === 5 && !prizesWon.row2.includes(p.name)) announce(p.name, "MIDDLE ROW", 'row2');
+        if(rHits[2] === 5 && !prizesWon.row3.includes(p.name)) announce(p.name, "BOTTOM ROW", 'row3');
+        if(hits === 15 && !prizesWon.fullHouse.includes(p.name)) announce(p.name, "FULL HOUSE", 'fullHouse');
+    });
+}
+
+function announce(name, prize, key) {
+    prizesWon[key].push(name);
+    document.getElementById('winPrize').textContent = prize;
+    document.getElementById('winName').textContent = name;
+    document.getElementById('winnerModal').style.display = 'block';
+    
+    const log = document.getElementById('claimed-list');
+    log.innerHTML = `<div class="mb-1">✅ <b>${name}</b> - ${prize}</div>` + log.innerHTML;
+    
+    confetti({ particleCount: 150, spread: 60 });
+    speak("Congratulations " + name + " for " + prize);
+}
+
+initBoard();
+</script>
+</body>
+</html>
